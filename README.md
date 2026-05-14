@@ -1,4 +1,4 @@
-[README.md](https://github.com/user-attachments/files/27760602/README.md)
+[Uploading README.md…]()
 # BHE Selector / Rule Manager
 ### `Manage-BHE-Selectors.ps1`
 
@@ -48,11 +48,13 @@ Run the script in audit mode. This is **read-only** — no changes are made.
 
 The script connects to BHE, pulls all selectors across all asset group tags, and exports 5 CSV files to the script folder.
 
-> **Screenshot: Script folder showing the 5 CSV files**
-> `<img width="469" height="263" alt="image" src="https://github.com/user-attachments/assets/9297a334-1d06-4afa-b142-9c1957eb6f3a" />`
+> **Script folder showing the 5 CSV files**
 
-> **Screenshot: Script output showing CSV file contents summary**
-> `<img width="878" height="168" alt="image" src="https://github.com/user-attachments/assets/531e3a4b-c779-4e1c-b643-a2e271a49d76" />`
+<img width="469" height="263" alt="image" src="https://github.com/user-attachments/assets/9297a334-1d06-4afa-b142-9c1957eb6f3a" />
+
+> **Script output showing CSV file contents summary**
+
+<img width="878" height="168" alt="image" src="https://github.com/user-attachments/assets/531e3a4b-c779-4e1c-b643-a2e271a49d76" />
 
 ---
 
@@ -66,8 +68,9 @@ The script connects to BHE, pulls all selectors across all asset group tags, and
 | `BHE_Audit_3_REVIEW_NonTierZero_Tags` | Rules in non-Tier-Zero tags (Owned, Tier 1 etc.) | Review separately |
 | `BHE_Audit_4_DELETE_Candidates` | Tier Zero custom rules — no `_` prefix, not a connector | **Review and action** |
 
-> **Screenshot: All rules listed in the audit output**
-> `<img width="4282" height="1130" alt="image" src="https://github.com/user-attachments/assets/f193951a-dbcf-4cbe-a224-8c8d32c6fe70" />`
+> **All rules listed in the audit output**
+
+<img width="4282" height="1130" alt="image" src="https://github.com/user-attachments/assets/f193951a-dbcf-4cbe-a224-8c8d32c6fe70" />
 
 ---
 
@@ -81,8 +84,9 @@ Open `BHE_Audit_4_DELETE_Candidates_<timestamp>.csv` in Excel.
 - If a rule in CSV 4 should be kept — either remove the row or leave `Delete` blank
 - Save the file as CSV when done
 
-> **Screenshot: CSV 4 with Delete column marked YES**
-> `<img width="847" height="217" alt="image" src="https://github.com/user-attachments/assets/7f4dcc4f-06e4-4e30-a9ac-b9fba7f6b718" />`
+> **CSV 4 with Delete column marked YES**
+
+<img width="847" height="217" alt="image" src="https://github.com/user-attachments/assets/7f4dcc4f-06e4-4e30-a9ac-b9fba7f6b718" />
 
 ---
 
@@ -106,8 +110,9 @@ Type `CONFIRMED` to proceed.
 
 **Step 2 — Single rule test**
 
-> **Screenshot: Single rule test deletion**
-> `<img width="434" height="165" alt="image" src="https://github.com/user-attachments/assets/839ca6d7-e078-42b0-b3bf-9a7378e2ae10" />`
+> **Single rule test deletion**
+
+<img width="434" height="165" alt="image" src="https://github.com/user-attachments/assets/839ca6d7-e078-42b0-b3bf-9a7378e2ae10" />
 
 The script deletes the **first rule only** as a test. Verify in the BHE UI that the rule is gone, then type `YES` to proceed to the full run.
 
@@ -130,7 +135,11 @@ Invoke-RestMethod -Uri $t -Method PUT -Headers (Sign "PUT" $t)
 ```
 
 **Check analysis status:**
-Wait until `status = idle` 
+```powershell
+docker exec -u root sdh_bhe_local-app-db-1 su -c "psql -U bloodhound -d bloodhound -c 'SELECT status, last_complete_analysis_at FROM datapipe_status;'" postgres
+```
+
+Wait until `status = idle` and `last_complete_analysis_at` shows a timestamp after your deletion.
 
 ---
 
