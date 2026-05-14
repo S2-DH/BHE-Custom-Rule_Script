@@ -103,7 +103,7 @@ The deletion runs in **3 steps**:
 **Step 1 — Review the deletion list**
 
 > **Screenshot: Deletion Candidate List**
-> `[INSERT SCREENSHOT - DELETION CANDIDATE LIST]`
+<img width="431" height="304" alt="image" src="https://github.com/user-attachments/assets/bc896c6e-bd24-4619-b65e-7d1c358c4f72" />
 
 The script displays every rule marked `YES` with its Tag ID and Selector ID.
 Type `CONFIRMED` to proceed.
@@ -128,18 +128,8 @@ Objects in deleted rules retain their Tier Zero tag until BHE analysis recalcula
 
 **Via BHE UI:** Settings → Analysis → Run Analysis
 
-**Via API:**
-```powershell
-$t = "$url/api/v2/analysis"
-Invoke-RestMethod -Uri $t -Method PUT -Headers (Sign "PUT" $t)
-```
-
 **Check analysis status:**
-```powershell
-docker exec -u root sdh_bhe_local-app-db-1 su -c "psql -U bloodhound -d bloodhound -c 'SELECT status, last_complete_analysis_at FROM datapipe_status;'" postgres
-```
-
-Wait until `status = idle` and `last_complete_analysis_at` shows a timestamp after your deletion.
+Wait until `status = idle`.
 
 ---
 
