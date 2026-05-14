@@ -45,6 +45,8 @@ Run the script in audit mode. This is **read-only** — no changes are made.
 ```powershell
 .\Manage-BHE-Selectors.ps1 -Audit
 ```
+> **Script output from the Audit process
+<img width="1454" height="852" alt="image" src="https://github.com/user-attachments/assets/afd559a6-5607-4659-a93a-ac94b7871a8e" />
 
 The script connects to BHE, pulls all selectors across all asset group tags, and exports 5 CSV files to the script folder.
 
@@ -88,7 +90,8 @@ Open `BHE_Audit_4_DELETE_Candidates_<timestamp>.csv` in Excel.
 
 > **CSV 4 with Confirm column marked YES**
 
-<img width="847" height="217" alt="image" src="https://github.com/user-attachments/assets/7f4dcc4f-06e4-4e30-a9ac-b9fba7f6b718" />
+<img width="1338" height="338" alt="image" src="https://github.com/user-attachments/assets/007e0ff6-4c07-46e8-af73-754bf0a4d40a" />
+
 
 ---
 
@@ -109,7 +112,7 @@ Type `CONFIRMED` to proceed.
 
 > **Deletion Candidate List**
 
-`[INSERT SCREENSHOT - DELETION CANDIDATE LIST]`
+<img width="528" height="376" alt="image" src="https://github.com/user-attachments/assets/38dfb380-f474-4857-82ee-1ece1ffcdff3" />
 
 **Step 2 — Single rule test**
 
@@ -117,11 +120,14 @@ The script deletes the **first rule only** as a test. Verify in the BHE UI that 
 
 > **Single rule test deletion**
 
-<img width="434" height="165" alt="image" src="https://github.com/user-attachments/assets/839ca6d7-e078-42b0-b3bf-9a7378e2ae10" />
+<img width="563" height="744" alt="image" src="https://github.com/user-attachments/assets/8f369060-c148-402b-8f6a-f4203392cc1e" />
+
 
 **Step 3 — Full deletion**
 
 The script deletes all remaining rules, reporting `[+] Deleted` or `[!] Failed` per rule, with a summary at the end.
+
+<img width="584" height="807" alt="image" src="https://github.com/user-attachments/assets/c30e1d80-aa68-473c-9bc0-eefec82ab39c" />
 
 ---
 
@@ -134,6 +140,7 @@ Objects in deleted or disabled rules retain their Tier Zero tag until BHE analys
 **Check analysis has completed:**
 
 Wait until `status = idle` and `last_complete_analysis_at` shows a timestamp after your deletion.
+
 
 ---
 
