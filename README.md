@@ -130,7 +130,6 @@ Objects in deleted or disabled rules retain their Tier Zero tag until BHE analys
 **Via BHE UI:** Settings → Analysis → Run Analysis
 
 **Check analysis has completed:**
-```
 
 Wait until `status = idle` and `last_complete_analysis_at` shows a timestamp after your deletion.
 
