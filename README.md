@@ -50,11 +50,13 @@ The script connects to BHE, pulls all selectors across all asset group tags, and
 
 > **Script folder showing the 5 CSV files**
 
-<img width="469" height="263" alt="image" src="https://github.com/user-attachments/assets/9297a334-1d06-4afa-b142-9c1957eb6f3a" />
+<img width="741" height="345" alt="image" src="https://github.com/user-attachments/assets/24f1cf06-573d-47ac-b962-52a746dc7897" />
+
 
 > **Script output showing CSV file contents summary**
 
-<img width="878" height="168" alt="image" src="https://github.com/user-attachments/assets/531e3a4b-c779-4e1c-b643-a2e271a49d76" />
+<img width="688" height="147" alt="image" src="https://github.com/user-attachments/assets/8069ac09-54c3-4d36-8d8c-3aea27e79914" />
+
 
 ---
 
@@ -70,7 +72,7 @@ The script connects to BHE, pulls all selectors across all asset group tags, and
 
 > **All rules listed in the audit output**
 
-<img width="4282" height="1130" alt="image" src="https://github.com/user-attachments/assets/f193951a-dbcf-4cbe-a224-8c8d32c6fe70" />
+
 
 ---
 
