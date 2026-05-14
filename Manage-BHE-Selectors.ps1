@@ -370,7 +370,7 @@ if ($Audit) {
     # Add a Delete column to the candidates file for review
     $csv4Rows = @($csv4Data) | ForEach-Object {
         [PSCustomObject]@{
-            Delete     = ""
+            Confirm    = ""
             Index      = $_.Index
             TagName    = $_.TagName
             TagID      = $_.TagID
@@ -399,7 +399,7 @@ if ($Audit) {
     Write-Host ""
     Write-Host "  Next steps:" -ForegroundColor Yellow
     Write-Host "    1. Review CSV 4 (DELETE_Candidates) with your team"                              -ForegroundColor DarkGray
-    Write-Host "    2. Mark Delete=YES on confirmed rows, leave blank to skip"                       -ForegroundColor DarkGray
+    Write-Host "    2. Mark Confirm=YES on rows to action, leave blank to skip"                       -ForegroundColor DarkGray
     Write-Host "    3. Run: .\Manage-BHE-Selectors.ps1 -DeleteFromCsv '<path to CSV 4>'"            -ForegroundColor DarkGray
     Write-Host ""
     Write-Host "  Note: CSV 3 (Non-Tier-Zero) should be reviewed separately before any deletion."   -ForegroundColor Yellow
@@ -418,11 +418,11 @@ if ($DeleteFromCsv) {
     }
 
     $csvRows    = Import-Csv -Path $DeleteFromCsv
-    $toDeleteCS = @($csvRows | Where-Object { $_.Delete -eq "YES" })
+    $toDeleteCS = @($csvRows | Where-Object { $_.Confirm -eq "YES" })
 
     if ($toDeleteCS.Count -eq 0) {
-        Write-Host "  No rows marked Delete=YES in: $DeleteFromCsv" -ForegroundColor Yellow
-        Write-Host "  Open the CSV, add YES in the Delete column for rows to remove, save and retry." -ForegroundColor DarkGray
+        Write-Host "  No rows marked Confirm=YES in: $DeleteFromCsv" -ForegroundColor Yellow
+        Write-Host "  Open the CSV, add YES in the Confirm column for rows to action, save and retry." -ForegroundColor DarkGray
         exit
     }
 
@@ -552,10 +552,10 @@ if ($DisableFromCsv) {
     if (-not (Test-Path $DisableFromCsv)) { Write-Error "CSV file not found: $DisableFromCsv" }
 
     $csvRows   = Import-Csv -Path $DisableFromCsv
-    $toDisable = @($csvRows | Where-Object { $_.Delete -eq "YES" })
+    $toDisable  = @($csvRows | Where-Object { $_.Confirm -eq "YES" })
 
     if ($toDisable.Count -eq 0) {
-        Write-Host "  No rows marked Delete=YES in: $DisableFromCsv" -ForegroundColor Yellow
+        Write-Host "  No rows marked Confirm=YES in: $DisableFromCsv" -ForegroundColor Yellow
         exit
     }
 
@@ -619,10 +619,10 @@ if ($EnableFromCsv) {
     if (-not (Test-Path $EnableFromCsv)) { Write-Error "CSV file not found: $EnableFromCsv" }
 
     $csvRows  = Import-Csv -Path $EnableFromCsv
-    $toEnable = @($csvRows | Where-Object { $_.Delete -eq "YES" })
+    $toEnable   = @($csvRows | Where-Object { $_.Confirm -eq "YES" })
 
     if ($toEnable.Count -eq 0) {
-        Write-Host "  No rows marked Delete=YES in: $EnableFromCsv" -ForegroundColor Yellow
+        Write-Host "  No rows marked Confirm=YES in: $EnableFromCsv" -ForegroundColor Yellow
         Write-Host "  Mark YES on the rows you want re-enabled." -ForegroundColor DarkGray
         exit
     }
