@@ -107,7 +107,7 @@ Type `CONFIRMED` to proceed.
 **Step 2 — Single rule test**
 
 > **Screenshot: Single rule test deletion**
-> `[INSERT SCREENSHOT - SINGLE RULE TEST]`
+> `<img width="434" height="165" alt="image" src="https://github.com/user-attachments/assets/839ca6d7-e078-42b0-b3bf-9a7378e2ae10" />`
 
 The script deletes the **first rule only** as a test. Verify in the BHE UI that the rule is gone, then type `YES` to proceed to the full run.
 
