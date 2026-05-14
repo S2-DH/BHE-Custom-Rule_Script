@@ -130,11 +130,7 @@ Invoke-RestMethod -Uri $t -Method PUT -Headers (Sign "PUT" $t)
 ```
 
 **Check analysis status:**
-```powershell
-docker exec -u root sdh_bhe_local-app-db-1 su -c "psql -U bloodhound -d bloodhound -c 'SELECT status, last_complete_analysis_at FROM datapipe_status;'" postgres
-```
-
-Wait until `status = idle` and `last_complete_analysis_at` shows a timestamp after your deletion.
+Wait until `status = idle` 
 
 ---
 
