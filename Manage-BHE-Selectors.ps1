@@ -44,7 +44,7 @@ param(
     [string]$TokenKey = "",
     [switch]$Audit,
     [switch]$NoFilter,
-    [string]$DeleteFromCsv = "",
+    [string]$DeleteFromCsv  = "",
     [string]$DisableFromCsv = "",
     [string]$EnableFromCsv  = ""
 )
@@ -139,7 +139,6 @@ function Invoke-BHEDelete {
         return $false
     }
 }
-
 
 function Invoke-BHEPATCH {
     param([string]$Path, [string]$Body)
@@ -293,9 +292,9 @@ function Show-AllSelectors {
 
 Show-AllSelectors -selectors $allSelectors
 
-# ---------------------------------------------
+# ─────────────────────────────────────────────
 # AUDIT MODE - export CSV and exit, no deletion
-# ---------------------------------------------
+# ─────────────────────────────────────────────
 if ($Audit) {
     $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 
@@ -341,10 +340,10 @@ if ($Audit) {
     $csv3Path = Join-Path $PSScriptRoot "BHE_Audit_3_REVIEW_NonTierZero_Tags_$timestamp.csv"
     $csv3Data = $allSelectors | Where-Object { $_.TagID -ne 1 }
 
-    # ── CSV 4: DELETE CANDIDATES
+    # ── CSV 4: ACTION REQUIRED
     # Default: TagID=1, IsDefault=FALSE, no underscore/connector prefix
     # -NoFilter: ALL non-default custom rules regardless of name - for manual review
-    $csv4Path = Join-Path $PSScriptRoot "BHE_Audit_4_DELETE_Candidates_$timestamp.csv"
+    $csv4Path = Join-Path $PSScriptRoot "BHE_Audit_4_ACTION_REQUIRED_$timestamp.csv"
 
     if ($NoFilter) {
         $csv4Data = $allSelectors | Where-Object {
@@ -367,7 +366,7 @@ if ($Audit) {
         }
     }
 
-    # Add a Delete column to the candidates file for review
+    # ── Build rows with Confirm column for CSV 4
     $csv4Rows = @($csv4Data) | ForEach-Object {
         [PSCustomObject]@{
             Confirm    = ""
@@ -382,14 +381,19 @@ if ($Audit) {
             Seeds      = $_.Seeds
         }
     }
-    $csv4Rows | Export-Csv -Path $csv4Path -NoTypeInformation -Encoding UTF8
 
-    # Export CSVs 1-3 via helper
+    # ── Export CSV 4 then prepend instruction row
+    $csv4Rows | Export-Csv -Path $csv4Path -NoTypeInformation -Encoding UTF8
+    $instruction = '# INSTRUCTIONS: Mark the "Confirm" column with YES to select rules for Deletion / Disabling / Enabling — leave blank to skip'
+    $csvContent  = Get-Content -Path $csv4Path -Raw
+    Set-Content -Path $csv4Path -Value ($instruction + [System.Environment]::NewLine + $csvContent) -Encoding UTF8
+
+    # ── Export CSVs 1-3 via helper
     Export-SelectorCsv -Data $csv1Data  -Path $csv1Path  -Label "KEEP - Custom underscore rules (Tier Zero)"
     Export-SelectorCsv -Data $csv1bData -Path $csv1bPath -Label "KEEP - Connector rules (Jamf/Okta/GitHub/Entra)"
     Export-SelectorCsv -Data $csv2Data  -Path $csv2Path  -Label "KEEP - System/Default rules (BloodHound)"
     Export-SelectorCsv -Data $csv3Data  -Path $csv3Path  -Label "REVIEW - Non-Tier-Zero tags (Owned, Tier1, etc.)"
-    Write-Host ("  [{0,4}]  DELETE CANDIDATES - Tier Zero, custom, no underscore, no connector prefix" -f @($csv4Data).Count) -ForegroundColor Red
+    Write-Host ("  [{0,4}]  ACTION REQUIRED - Tier Zero, custom, no underscore, no connector prefix" -f @($csv4Data).Count) -ForegroundColor Red
     Write-Host ("          $csv4Path") -ForegroundColor DarkGray
 
     Write-Host ""
@@ -398,26 +402,24 @@ if ($Audit) {
     Write-Host "  ======================================" -ForegroundColor Cyan
     Write-Host ""
     Write-Host "  Next steps:" -ForegroundColor Yellow
-    Write-Host "    1. Review CSV 4 (DELETE_Candidates) with your team"                              -ForegroundColor DarkGray
-    Write-Host "    2. Mark Confirm=YES on rows to action, leave blank to skip"                       -ForegroundColor DarkGray
-    Write-Host "    3. Run: .\Manage-BHE-Selectors.ps1 -DeleteFromCsv '<path to CSV 4>'"            -ForegroundColor DarkGray
+    Write-Host "    1. Review BHE_Audit_4_ACTION_REQUIRED with your team"                                         -ForegroundColor DarkGray
+    Write-Host "    2. Mark Confirm=YES on rows to action, leave blank to skip"                                    -ForegroundColor DarkGray
+    Write-Host "    3. Run: .\Manage-BHE-Selectors.ps1 -DeleteFromCsv '<path to BHE_Audit_4_ACTION_REQUIRED csv>'" -ForegroundColor DarkGray
     Write-Host ""
-    Write-Host "  Note: CSV 3 (Non-Tier-Zero) should be reviewed separately before any deletion."   -ForegroundColor Yellow
+    Write-Host "  Note: CSV 3 (Non-Tier-Zero) should be reviewed separately before any deletion."                 -ForegroundColor Yellow
     Write-Host ""
     exit
 }
 
-
 # ─────────────────────────────────────────────
-# ---------------------------------------------
 # CSV DELETION MODE
-# ---------------------------------------------
+# ─────────────────────────────────────────────
 if ($DeleteFromCsv) {
     if (-not (Test-Path $DeleteFromCsv)) {
         Write-Error "CSV file not found: $DeleteFromCsv"
     }
 
-    $csvRows    = Import-Csv -Path $DeleteFromCsv
+    $csvRows    = Get-Content -Path $DeleteFromCsv | Where-Object { $_ -notmatch '^\s*#' } | ConvertFrom-Csv
     $toDeleteCS = @($csvRows | Where-Object { $_.Confirm -eq "YES" })
 
     if ($toDeleteCS.Count -eq 0) {
@@ -461,7 +463,7 @@ if ($DeleteFromCsv) {
 
     $testRow = $toDeleteCS[0]
     Write-Host "  Test rule : $($testRow.Name)" -ForegroundColor Yellow
-    Write-Host "  TagID     : $($testRow.TagID)"     -ForegroundColor DarkGray
+    Write-Host "  TagID     : $($testRow.TagID)"      -ForegroundColor DarkGray
     Write-Host "  SelectorID: $($testRow.SelectorID)" -ForegroundColor DarkGray
     Write-Host ""
 
@@ -481,7 +483,6 @@ if ($DeleteFromCsv) {
                 Write-Host "  Stopped after test. $($toDeleteCS.Count - 1) rules remaining." -ForegroundColor Yellow
                 exit
             }
-            # Remove test row from remaining list
             $toDeleteCS = @($toDeleteCS | Select-Object -Skip 1)
         } else {
             Write-Host ""
@@ -544,15 +545,14 @@ if ($DeleteFromCsv) {
     exit
 }
 
-
 # ─────────────────────────────────────────────
 # DISABLE FROM CSV
 # ─────────────────────────────────────────────
 if ($DisableFromCsv) {
     if (-not (Test-Path $DisableFromCsv)) { Write-Error "CSV file not found: $DisableFromCsv" }
 
-    $csvRows   = Import-Csv -Path $DisableFromCsv
-    $toDisable  = @($csvRows | Where-Object { $_.Confirm -eq "YES" })
+    $csvRows   = Get-Content -Path $DisableFromCsv | Where-Object { $_ -notmatch '^\s*#' } | ConvertFrom-Csv
+    $toDisable = @($csvRows | Where-Object { $_.Confirm -eq "YES" })
 
     if ($toDisable.Count -eq 0) {
         Write-Host "  No rows marked Confirm=YES in: $DisableFromCsv" -ForegroundColor Yellow
@@ -581,8 +581,8 @@ if ($DisableFromCsv) {
     $failLog  = [System.Collections.Generic.List[string]]::new()
 
     foreach ($row in $toDisable) {
-        $path = "/api/v2/asset-group-tags/$($row.TagID)/selectors/$($row.SelectorID)"
-        $body = '{"disabled":true,"id":' + $row.SelectorID + '}'
+        $path   = "/api/v2/asset-group-tags/$($row.TagID)/selectors/$($row.SelectorID)"
+        $body   = '{"disabled":true,"id":' + $row.SelectorID + '}'
         $result = Invoke-BHEPATCH -Path $path -Body $body
         if ($result) {
             Write-Host "  [+] Disabled : $($row.Name)" -ForegroundColor Green
@@ -618,8 +618,8 @@ if ($DisableFromCsv) {
 if ($EnableFromCsv) {
     if (-not (Test-Path $EnableFromCsv)) { Write-Error "CSV file not found: $EnableFromCsv" }
 
-    $csvRows  = Import-Csv -Path $EnableFromCsv
-    $toEnable   = @($csvRows | Where-Object { $_.Confirm -eq "YES" })
+    $csvRows  = Get-Content -Path $EnableFromCsv | Where-Object { $_ -notmatch '^\s*#' } | ConvertFrom-Csv
+    $toEnable = @($csvRows | Where-Object { $_.Confirm -eq "YES" })
 
     if ($toEnable.Count -eq 0) {
         Write-Host "  No rows marked Confirm=YES in: $EnableFromCsv" -ForegroundColor Yellow
@@ -679,7 +679,8 @@ if ($EnableFromCsv) {
     exit
 }
 
-# Selection loop
+# ─────────────────────────────────────────────
+# INTERACTIVE SELECTION LOOP
 # ─────────────────────────────────────────────
 Write-Host "  ======================================" -ForegroundColor Cyan
 Write-Host "    SELECT RULES TO DELETE"               -ForegroundColor Cyan
