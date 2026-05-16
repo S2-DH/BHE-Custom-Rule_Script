@@ -56,7 +56,7 @@ Pass a custom path with `-EnvFile "C:\creds\bhe.env"` if needed.
 
 ```
 <img width="964" height="694" alt="1 - Audit Results" src="https://github.com/user-attachments/assets/fc91d21b-8d64-489b-b99b-a385b8f41b99" />
-
+<img width="960" height="205" alt="3 - CSV Files Details" src="https://github.com/user-attachments/assets/db567648-e0f4-403f-8888-8a2294dd5667" />
 
 Generates five CSV files in the script directory:
 
@@ -67,8 +67,6 @@ Generates five CSV files in the script directory:
 | `BHE_Audit_2_KEEP_System_Default` | Built-in BloodHound system rules | Leave alone |
 | `BHE_Audit_3_REVIEW_NonTierZero_Tags` | Rules on non-Tier-Zero tags | Review separately |
 | `BHE_Audit_4_ACTION_REQUIRED` | Tier Zero custom rules — candidates for action | **Work from this one** |
-
-<img width="960" height="205" alt="3 - CSV Files Details" src="https://github.com/user-attachments/assets/db567648-e0f4-403f-8888-8a2294dd5667" />
 
 <img width="820" height="366" alt="2 - Folder csv View" src="https://github.com/user-attachments/assets/ffde768a-278e-48bc-a7aa-8ab00aac36d0" />
 
