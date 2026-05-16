@@ -2,31 +2,32 @@
 <#
 .SYNOPSIS
     Interactive BHE Asset Group Tag Selector / Rule Manager.
-    Lists ALL selectors across all asset group tags, then lets you choose what to delete.
+    Lists ALL rules across all asset group tags, then lets you choose what to action.
 
 .DESCRIPTION
     Correct endpoints (confirmed against local BHE instance):
       GET    /api/v2/asset-group-tags
       GET    /api/v2/asset-group-tags/{tagId}/selectors?limit=0
       DELETE /api/v2/asset-group-tags/{tagId}/selectors/{selectorId}
+      PATCH  /api/v2/asset-group-tags/{tagId}/selectors/{selectorId}
 
     Uses 3-step chained HMAC-SHA256 (matches BHE-API-Console.ps1)
     Reads credentials from .env file in same folder as script.
 
-    Colour coding:
+    Colour coding (interactive mode):
       Red   = SDH-2B-DELETED pattern
       Green = _SDH-KEEP pattern
-      Gray  = Default/system selectors (is_default=true, protected)
-      White = Other custom selectors
+      Gray  = Default/system rules (is_default=true, protected)
+      White = Other custom rules
 
-    Selection modes:
+    Selection modes (interactive):
       Single  : 5
       List    : 1,3,7,12
       Range   : 1-15
       Pattern : pattern:SDH-2B-DELETED
       Tag     : tag:Tier Zero
       done    : proceed to deletion
-      list    : redisplay all selectors
+      list    : redisplay all rules
       quit    : exit without deleting
 
 .PARAMETER EnvFile
@@ -35,16 +36,21 @@
 .EXAMPLE
     .\Manage-BHE-Selectors.ps1
     .\Manage-BHE-Selectors.ps1 -EnvFile "C:\creds\bhe.env"
+    .\Manage-BHE-Selectors.ps1 -Audit
+    .\Manage-BHE-Selectors.ps1 -Audit -NoFilter
+    .\Manage-BHE-Selectors.ps1 -DisableFromCsv ".\BHE_Audit_4_ACTION_REQUIRED_20260516_070537.csv"
+    .\Manage-BHE-Selectors.ps1 -EnableFromCsv  ".\BHE_Audit_4_ACTION_REQUIRED_20260516_070537.csv"
+    .\Manage-BHE-Selectors.ps1 -DeleteFromCsv  ".\BHE_Audit_4_ACTION_REQUIRED_20260516_070537.csv"
 #>
 
 param(
-    [string]$EnvFile  = "",
-    [string]$BHEUrl   = "",
-    [string]$TokenID  = "",
-    [string]$TokenKey = "",
+    [string]$EnvFile        = "",
+    [string]$BHEUrl         = "",
+    [string]$TokenID        = "",
+    [string]$TokenKey       = "",
     [switch]$Audit,
     [switch]$NoFilter,
-    [string]$DeleteFromCsv = "",
+    [string]$DeleteFromCsv  = "",
     [string]$DisableFromCsv = "",
     [string]$EnableFromCsv  = ""
 )
@@ -84,6 +90,27 @@ if (@($missing).Count -gt 0) {
 }
 
 # ─────────────────────────────────────────────
+# Determine active mode
+# ─────────────────────────────────────────────
+$isCsvMode  = ($DeleteFromCsv -or $DisableFromCsv -or $EnableFromCsv)
+$activeMode = if     ($Audit)           { "AUDIT" }
+              elseif ($DeleteFromCsv)   { "DELETE" }
+              elseif ($DisableFromCsv)  { "DISABLE" }
+              elseif ($EnableFromCsv)   { "ENABLE" }
+              else                      { "INTERACTIVE" }
+
+# ─────────────────────────────────────────────
+# Banner
+# ─────────────────────────────────────────────
+Write-Host ""
+Write-Host "  ======================================" -ForegroundColor Cyan
+Write-Host "     BHE Selector / Rule Manager"         -ForegroundColor Cyan
+Write-Host "  ======================================" -ForegroundColor Cyan
+Write-Host "  BHE URL : $BHEUrl"                      -ForegroundColor DarkGray
+Write-Host "  Mode    : $activeMode"                  -ForegroundColor DarkGray
+Write-Host ""
+
+# ─────────────────────────────────────────────
 # 3-Step Chained HMAC-SHA256
 # ─────────────────────────────────────────────
 function Get-BHESignature {
@@ -113,6 +140,9 @@ function Get-BHESignature {
     }
 }
 
+# ─────────────────────────────────────────────
+# API helpers
+# ─────────────────────────────────────────────
 function Invoke-BHEGet {
     param([string]$Path)
     $url     = "$BHEUrl$Path"
@@ -140,7 +170,6 @@ function Invoke-BHEDelete {
     }
 }
 
-
 function Invoke-BHEPATCH {
     param([string]$Path, [string]$Body)
     $url     = "$BHEUrl$Path"
@@ -156,97 +185,33 @@ function Invoke-BHEPATCH {
 }
 
 # ─────────────────────────────────────────────
-# Fetch all tags and their selectors
+# CSV import helper
+# No instruction row in the file — instructions are printed to console
+# after -Audit completes. Plain Import-Csv with path resolution.
 # ─────────────────────────────────────────────
-Write-Host ""
-Write-Host "  ======================================" -ForegroundColor Cyan
-Write-Host "     BHE Selector / Rule Manager"         -ForegroundColor Cyan
-Write-Host "  ======================================" -ForegroundColor Cyan
-Write-Host "  BHE URL : $BHEUrl"                      -ForegroundColor DarkGray
-Write-Host ""
-Write-Host "  [*] Fetching asset group tags..." -ForegroundColor Cyan
-
-$tagsResp = Invoke-BHEGet -Path "/api/v2/asset-group-tags"
-if (-not $tagsResp -or -not $tagsResp.data) {
-    Write-Error "Failed to retrieve asset group tags. Run Test-BHE-Connection.ps1 to diagnose."
-}
-
-$tags = $tagsResp.data.tags
-if (-not $tags) { $tags = $tagsResp.data }
-Write-Host "      Found $(@($tags).Count) tag(s)" -ForegroundColor Green
-
-# ─────────────────────────────────────────────
-# Build flat selector list
-# ─────────────────────────────────────────────
-$allSelectors = [System.Collections.Generic.List[PSCustomObject]]::new()
-$idx          = 1
-
-foreach ($tag in $tags) {
-    $tagId   = $tag.id
-    $tagName = $tag.name
-
-    Write-Host "      [*] $tagName (id: $tagId)" -ForegroundColor DarkGray
-
-    $selResp   = Invoke-BHEGet -Path "/api/v2/asset-group-tags/$tagId/selectors?limit=0"
-    $selectors = $null
-
-    if ($selResp -and $selResp.data) {
-        $selectors = $selResp.data.selectors
-        if (-not $selectors) { $selectors = $selResp.data }
+function Import-ActionCsv {
+    param([string]$Path)
+    if (-not (Test-Path $Path)) { Write-Error "CSV file not found: $Path" }
+    $fullPath = (Resolve-Path $Path).Path
+    $result   = Import-Csv -Path $fullPath
+    if (@($result).Count -gt 0 -and -not (@($result)[0].PSObject.Properties['Confirm'])) {
+        Write-Host ""
+        Write-Host "  [!] ERROR: CSV is missing the 'Confirm' column." -ForegroundColor Red
+        Write-Host "      Re-run -Audit to generate a fresh ACTION_REQUIRED file." -ForegroundColor DarkGray
+        Write-Host ""
+        exit
     }
-
-    if ($selectors) {
-        $customCount  = 0
-        $defaultCount = 0
-        foreach ($sel in $selectors) {
-            $seedSummary = ""
-            if ($sel.PSObject.Properties["seeds"] -and $sel.seeds) {
-                $seedSummary = ($sel.seeds | ForEach-Object {
-                    $typeLabel = if ($_.type -eq 1) { "ObjectID" } elseif ($_.type -eq 2) { "Cypher" } else { "Type$($_.type)" }
-                    $rawVal    = if ($_.PSObject.Properties["value"] -and $_.value) { ($_.value -replace '\s+',' ') } else { "" }
-                    $preview   = $rawVal.Substring(0, [Math]::Min(60, $rawVal.Length))
-                    "${typeLabel}: ${preview}..."
-                }) -join " | "
-            }
-
-            $selId   = if ($sel.PSObject.Properties["id"])          { $sel.id }              else { 0 }
-            $selName = if ($sel.PSObject.Properties["name"])        { $sel.name }            else { "(unnamed)" }
-            $selDef  = if ($sel.PSObject.Properties["is_default"])  { [bool]$sel.is_default } else { $false }
-            $selBy   = if ($sel.PSObject.Properties["created_by"])  { $sel.created_by }      else { "" }
-            $selDis  = if ($sel.PSObject.Properties["disabled_at"]) { $sel.disabled_at }     else { $null }
-
-            $allSelectors.Add([PSCustomObject]@{
-                Index      = $idx
-                TagID      = $tagId
-                TagName    = $tagName
-                SelectorID = $selId
-                Name       = $selName
-                IsDefault  = $selDef
-                CreatedBy  = $selBy
-                DisabledAt = $selDis
-                Seeds      = $seedSummary
-            })
-
-            if ($selDef) { $defaultCount++ } else { $customCount++ }
-            $idx++
-        }
-        Write-Host "          $customCount custom, $defaultCount default/system" -ForegroundColor DarkGray
-    }
-}
-
-if (@($allSelectors).Count -eq 0) {
-    Write-Host "  No selectors found." -ForegroundColor Yellow
-    exit
+    return $result
 }
 
 # ─────────────────────────────────────────────
-# Display function
+# Display function — interactive mode only
 # ─────────────────────────────────────────────
 function Show-AllSelectors {
     param($selectors)
     Write-Host ""
     Write-Host "  ======================================" -ForegroundColor Cyan
-    Write-Host "    ALL SELECTORS / RULES"               -ForegroundColor Cyan
+    Write-Host "    ALL RULES"                            -ForegroundColor Cyan
     Write-Host "  ======================================" -ForegroundColor Cyan
 
     $lastTag = ""
@@ -255,20 +220,19 @@ function Show-AllSelectors {
         if ($sel.TagName -ne $lastTag) {
             Write-Host ""
             Write-Host "  [ Tag: $($sel.TagName) (id: $($sel.TagID)) ]" -ForegroundColor Magenta
-            Write-Host "  ----------------------------------------" -ForegroundColor DarkGray
+            Write-Host "  ----------------------------------------"     -ForegroundColor DarkGray
             $lastTag = $sel.TagName
         }
 
-        $idxLabel  = "[{0:D3}]" -f $sel.Index
-        $defLabel  = if ($sel.IsDefault)   { " [DEFAULT]"  } else { "" }
-        $disLabel  = if ($sel.DisabledAt)  { " [DISABLED]" } else { "" }
+        $idxLabel = "[{0:D3}]" -f $sel.Index
+        $defLabel = if ($sel.IsDefault)  { " [DEFAULT]"  } else { "" }
+        $disLabel = if ($sel.DisabledAt) { " [DISABLED]" } else { "" }
 
         $colour = switch -Regex ($sel.Name) {
-            "SDH-2B-DELETED"  { "Red"     ; break }
-            "_SDH-KEEP"       { "Green"   ; break }
+            "SDH-2B-DELETED" { "Red"   ; break }
+            "_SDH-KEEP"      { "Green" ; break }
             default {
-                if ($sel.IsDefault) { "DarkGray" }
-                else                { "White" }
+                if ($sel.IsDefault) { "DarkGray" } else { "White" }
             }
         }
 
@@ -280,26 +244,106 @@ function Show-AllSelectors {
 
     Write-Host ""
     Write-Host "  Colour key:" -ForegroundColor DarkGray
-    Write-Host "    Red   = SDH-2B-DELETED pattern"              -ForegroundColor Red
-    Write-Host "    Green = _SDH-KEEP pattern"                   -ForegroundColor Green
-    Write-Host "    Gray  = Default/system (protected)"          -ForegroundColor DarkGray
-    Write-Host "    White = Custom selectors"                    -ForegroundColor White
+    Write-Host "    Red   = SDH-2B-DELETED pattern"    -ForegroundColor Red
+    Write-Host "    Green = _SDH-KEEP pattern"          -ForegroundColor Green
+    Write-Host "    Gray  = Default/system (protected)" -ForegroundColor DarkGray
+    Write-Host "    White = Custom rules"               -ForegroundColor White
 
     $customTotal = @($selectors | Where-Object { -not $_.IsDefault }).Count
     Write-Host ""
-    Write-Host "  Total: $(@($selectors).Count) selectors ($customTotal custom, $(@($selectors).Count - $customTotal) default)" -ForegroundColor Cyan
+    Write-Host "  Total: $(@($selectors).Count) rules ($customTotal custom, $(@($selectors).Count - $customTotal) default)" -ForegroundColor Cyan
     Write-Host ""
 }
 
-Show-AllSelectors -selectors $allSelectors
+# ─────────────────────────────────────────────
+# Fetch all tags and build rule list
+# Skipped entirely for CSV action modes
+# ─────────────────────────────────────────────
+$allSelectors = [System.Collections.Generic.List[PSCustomObject]]::new()
 
-# ---------------------------------------------
-# AUDIT MODE - export CSV and exit, no deletion
-# ---------------------------------------------
+if (-not $isCsvMode) {
+
+    Write-Host "  [*] Fetching asset group tags..." -ForegroundColor Cyan
+
+    $tagsResp = Invoke-BHEGet -Path "/api/v2/asset-group-tags"
+    if (-not $tagsResp -or -not $tagsResp.data) {
+        Write-Error "Failed to retrieve asset group tags. Run Test-BHE-Connection.ps1 to diagnose."
+    }
+
+    $tags = $tagsResp.data.tags
+    if (-not $tags) { $tags = $tagsResp.data }
+    Write-Host "      Found $(@($tags).Count) tag(s)" -ForegroundColor Green
+
+    $idx = 1
+    foreach ($tag in $tags) {
+        $tagId   = $tag.id
+        $tagName = $tag.name
+
+        Write-Host "      [*] $tagName (id: $tagId)" -ForegroundColor DarkGray
+
+        $selResp   = Invoke-BHEGet -Path "/api/v2/asset-group-tags/$tagId/selectors?limit=0"
+        $selectors = $null
+
+        if ($selResp -and $selResp.data) {
+            $selectors = $selResp.data.selectors
+            if (-not $selectors) { $selectors = $selResp.data }
+        }
+
+        if ($selectors) {
+            $customCount  = 0
+            $defaultCount = 0
+            foreach ($sel in $selectors) {
+                $seedSummary = ""
+                if ($sel.PSObject.Properties["seeds"] -and $sel.seeds) {
+                    $seedSummary = ($sel.seeds | ForEach-Object {
+                        $typeLabel = if ($_.type -eq 1) { "ObjectID" } elseif ($_.type -eq 2) { "Cypher" } else { "Type$($_.type)" }
+                        $rawVal    = if ($_.PSObject.Properties["value"] -and $_.value) { ($_.value -replace '\s+',' ') } else { "" }
+                        $preview   = $rawVal.Substring(0, [Math]::Min(60, $rawVal.Length))
+                        "${typeLabel}: ${preview}..."
+                    }) -join " | "
+                }
+
+                $selId   = if ($sel.PSObject.Properties["id"])          { $sel.id }               else { 0 }
+                $selName = if ($sel.PSObject.Properties["name"])        { $sel.name }             else { "(unnamed)" }
+                $selDef  = if ($sel.PSObject.Properties["is_default"])  { [bool]$sel.is_default } else { $false }
+                $selBy   = if ($sel.PSObject.Properties["created_by"])  { $sel.created_by }       else { "" }
+                $selDis  = if ($sel.PSObject.Properties["disabled_at"]) { $sel.disabled_at }      else { $null }
+
+                $allSelectors.Add([PSCustomObject]@{
+                    Index      = $idx
+                    TagID      = $tagId
+                    TagName    = $tagName
+                    SelectorID = $selId
+                    Name       = $selName
+                    IsDefault  = $selDef
+                    CreatedBy  = $selBy
+                    DisabledAt = $selDis
+                    Seeds      = $seedSummary
+                })
+
+                if ($selDef) { $defaultCount++ } else { $customCount++ }
+                $idx++
+            }
+            Write-Host "          $customCount custom, $defaultCount default/system" -ForegroundColor DarkGray
+        }
+    }
+
+    if (@($allSelectors).Count -eq 0) {
+        Write-Host "  No rules found." -ForegroundColor Yellow
+        exit
+    }
+
+    Write-Host ""
+    Write-Host "  [+] $(@($allSelectors).Count) rules loaded." -ForegroundColor Green
+    Write-Host ""
+}
+
+# ─────────────────────────────────────────────
+# AUDIT MODE
+# ─────────────────────────────────────────────
 if ($Audit) {
     $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 
-    # ── Helper: export with row count ──────────────────────────────────────
     function Export-SelectorCsv {
         param($Data, $Path, $Label)
         $rows = @($Data)
@@ -309,15 +353,13 @@ if ($Audit) {
         Write-Host ("          $Path") -ForegroundColor DarkGray
     }
 
-    # ── CSV 1a: KEEP - Custom rules with underscore prefix (TagID=1, not default, name starts with _)
+    # CSV 1a: KEEP - Custom rules with underscore prefix
     $csv1Path = Join-Path $PSScriptRoot "BHE_Audit_1a_KEEP_Custom_Underscore_$timestamp.csv"
     $csv1Data = $allSelectors | Where-Object {
-        $_.TagID -eq 1 -and
-        -not $_.IsDefault -and
-        $_.Name -match '^\s*_'
+        $_.TagID -eq 1 -and -not $_.IsDefault -and $_.Name -match '^\s*_'
     }
 
-    # ── CSV 1b: KEEP - Connector/integration rules (Jamf, Okta, GitHub, specific named objects)
+    # CSV 1b: KEEP - Connector/integration rules
     $csv1bPath = Join-Path $PSScriptRoot "BHE_Audit_1b_KEEP_Connector_Rules_$timestamp.csv"
     $csv1bData = $allSelectors | Where-Object {
         $_.TagID -eq 1 -and
@@ -333,41 +375,37 @@ if ($Audit) {
         )
     }
 
-    # ── CSV 2: KEEP - System/Default rules (IsDefault=TRUE, created by BloodHound)
+    # CSV 2: KEEP - System/Default rules
     $csv2Path = Join-Path $PSScriptRoot "BHE_Audit_2_KEEP_System_Default_$timestamp.csv"
     $csv2Data = $allSelectors | Where-Object { $_.IsDefault -eq $true }
 
-    # ── CSV 3: REVIEW - Non-Tier-Zero tags (TagID != 1)
+    # CSV 3: REVIEW - Non-Tier-Zero tags
     $csv3Path = Join-Path $PSScriptRoot "BHE_Audit_3_REVIEW_NonTierZero_Tags_$timestamp.csv"
     $csv3Data = $allSelectors | Where-Object { $_.TagID -ne 1 }
 
-    # ── CSV 4: DELETE CANDIDATES
-    # Default: TagID=1, IsDefault=FALSE, no underscore/connector prefix
-    # -NoFilter: ALL non-default custom rules regardless of name - for manual review
-    $csv4Path = Join-Path $PSScriptRoot "BHE_Audit_4_DELETE_Candidates_$timestamp.csv"
+    # CSV 4: ACTION REQUIRED
+    $csv4Path = Join-Path $PSScriptRoot "BHE_Audit_4_ACTION_REQUIRED_$timestamp.csv"
 
     if ($NoFilter) {
-        $csv4Data = $allSelectors | Where-Object {
-            -not $_.IsDefault -and
-            $_.SelectorID -ne 0
-        }
-        Write-Host "  [!] NoFilter mode - ALL custom non-default rules in CSV 4 for manual review" -ForegroundColor Yellow
+        $csv4Data = $allSelectors | Where-Object { -not $_.IsDefault -and $_.SelectorID -ne 0 }
+        Write-Host "  [!] NoFilter mode - ALL custom non-default rules included in ACTION_REQUIRED" -ForegroundColor Yellow
     } else {
         $csv4Data = $allSelectors | Where-Object {
             $_.TagID -eq 1 -and
             -not $_.IsDefault -and
             $_.SelectorID -ne 0 -and
-            $_.Name -notmatch '^\s*_'  -and
-            $_.Name -notmatch '^Jamf:' -and
-            $_.Name -notmatch '^Okta:' -and
+            $_.Name -notmatch '^\s*_'    -and
+            $_.Name -notmatch '^Jamf:'   -and
+            $_.Name -notmatch '^Okta:'   -and
             $_.Name -notmatch '^GitHub:' -and
-            $_.Name -notmatch '^Entra ' -and
-            $_.Name -ne 'OKTAT1' -and
+            $_.Name -notmatch '^Entra '  -and
+            $_.Name -ne 'OKTAT1'         -and
             $_.Name -notmatch '^ADMIN@'
         }
     }
 
-    # Add a Delete column to the candidates file for review
+    # Build rows with Confirm column and export
+    # No instruction row written to the file — instructions printed below instead
     $csv4Rows = @($csv4Data) | ForEach-Object {
         [PSCustomObject]@{
             Confirm    = ""
@@ -384,104 +422,98 @@ if ($Audit) {
     }
     $csv4Rows | Export-Csv -Path $csv4Path -NoTypeInformation -Encoding UTF8
 
-    # Export CSVs 1-3 via helper
-    Export-SelectorCsv -Data $csv1Data  -Path $csv1Path  -Label "KEEP - Custom underscore rules (Tier Zero)"
-    Export-SelectorCsv -Data $csv1bData -Path $csv1bPath -Label "KEEP - Connector rules (Jamf/Okta/GitHub/Entra)"
-    Export-SelectorCsv -Data $csv2Data  -Path $csv2Path  -Label "KEEP - System/Default rules (BloodHound)"
-    Export-SelectorCsv -Data $csv3Data  -Path $csv3Path  -Label "REVIEW - Non-Tier-Zero tags (Owned, Tier1, etc.)"
-    Write-Host ("  [{0,4}]  DELETE CANDIDATES - Tier Zero, custom, no underscore, no connector prefix" -f @($csv4Data).Count) -ForegroundColor Red
-    Write-Host ("          $csv4Path") -ForegroundColor DarkGray
-
-    Write-Host ""
+    # Summary output
     Write-Host "  ======================================" -ForegroundColor Cyan
     Write-Host "    AUDIT EXPORT COMPLETE"               -ForegroundColor Cyan
     Write-Host "  ======================================" -ForegroundColor Cyan
     Write-Host ""
-    Write-Host "  Next steps:" -ForegroundColor Yellow
-    Write-Host "    1. Review CSV 4 (DELETE_Candidates) with your team"                              -ForegroundColor DarkGray
-    Write-Host "    2. Mark Confirm=YES on rows to action, leave blank to skip"                       -ForegroundColor DarkGray
-    Write-Host "    3. Run: .\Manage-BHE-Selectors.ps1 -DeleteFromCsv '<path to CSV 4>'"            -ForegroundColor DarkGray
+    Export-SelectorCsv -Data $csv1Data  -Path $csv1Path  -Label "KEEP    - Custom underscore rules (Tier Zero)"
+    Export-SelectorCsv -Data $csv1bData -Path $csv1bPath -Label "KEEP    - Connector rules (Jamf/Okta/GitHub/Entra)"
+    Export-SelectorCsv -Data $csv2Data  -Path $csv2Path  -Label "KEEP    - System/Default rules (BloodHound)"
+    Export-SelectorCsv -Data $csv3Data  -Path $csv3Path  -Label "REVIEW  - Non-Tier-Zero tags (Owned, etc.)"
+    Write-Host ("  [{0,4}]  ACTION REQUIRED - Tier Zero custom rules to review" -f @($csv4Data).Count) -ForegroundColor DarkYellow
+    Write-Host ("          $csv4Path") -ForegroundColor DarkGray
     Write-Host ""
-    Write-Host "  Note: CSV 3 (Non-Tier-Zero) should be reviewed separately before any deletion."   -ForegroundColor Yellow
+    Write-Host "  ======================================" -ForegroundColor Yellow
+    Write-Host "    NEXT STEPS"                           -ForegroundColor Yellow
+    Write-Host "  ======================================" -ForegroundColor Yellow
+    Write-Host "  1. Open BHE_Audit_4_ACTION_REQUIRED in Excel"                                          -ForegroundColor Yellow
+    Write-Host "  2. Mark the Confirm column with YES for each rule to action - leave blank to skip"      -ForegroundColor Yellow
+	Write-Host "     (The same Confirm=YES column drives all three operations - disable, enable, delete)" -ForegroundColor DarkYellow
+	Write-Host "     The action performed depends on which parameter you use in the command below"        -ForegroundColor DarkYellow
+	Write-Host ""
+    Write-Host "  3. Save the file, then run one of:"                                                     -ForegroundColor Yellow
+    Write-Host "     Disable (recommended first):  .\Manage-BHE-Selectors.ps1 -DisableFromCsv '<path>'" -ForegroundColor DarkYellow
+    Write-Host "     Re-enable if needed:           .\Manage-BHE-Selectors.ps1 -EnableFromCsv  '<path>'" -ForegroundColor DarkYellow
+    Write-Host "     Delete permanently:            .\Manage-BHE-Selectors.ps1 -DeleteFromCsv  '<path>'" -ForegroundColor DarkYellow
+    Write-Host ""
+    Write-Host "  Note: Review CSV 3 (Non-Tier-Zero tags) separately before any action." -ForegroundColor Yellow
     Write-Host ""
     exit
 }
 
-
 # ─────────────────────────────────────────────
-# ---------------------------------------------
-# CSV DELETION MODE
-# ---------------------------------------------
+# DELETE FROM CSV
+# ─────────────────────────────────────────────
 if ($DeleteFromCsv) {
-    if (-not (Test-Path $DeleteFromCsv)) {
-        Write-Error "CSV file not found: $DeleteFromCsv"
-    }
 
-    $csvRows    = Import-Csv -Path $DeleteFromCsv
+    $csvRows    = Import-ActionCsv -Path $DeleteFromCsv
     $toDeleteCS = @($csvRows | Where-Object { $_.Confirm -eq "YES" })
 
     if ($toDeleteCS.Count -eq 0) {
         Write-Host "  No rows marked Confirm=YES in: $DeleteFromCsv" -ForegroundColor Yellow
-        Write-Host "  Open the CSV, add YES in the Confirm column for rows to action, save and retry." -ForegroundColor DarkGray
+        Write-Host "  Open the file, add YES in the Confirm column for rows to action, save and retry." -ForegroundColor DarkGray
         exit
     }
 
-    # ── STEP 1: Show full deletion list ────────────────────────────────────
+    # Step 1: Review list
     Write-Host ""
-    Write-Host "  ========================================================" -ForegroundColor Red
-    Write-Host "    DELETION CANDIDATE LIST"                                -ForegroundColor Red
-    Write-Host "  ========================================================" -ForegroundColor Red
-    Write-Host "  CSV File  : $DeleteFromCsv"                               -ForegroundColor DarkGray
-    Write-Host "  Marked    : $($toDeleteCS.Count) rule(s) for deletion"    -ForegroundColor Red
+    Write-Host "  ========================================================" -ForegroundColor Cyan
+    Write-Host "    DELETION CANDIDATE LIST"                                -ForegroundColor Cyan
+    Write-Host "  ========================================================" -ForegroundColor Cyan
+    Write-Host "  File    : $DeleteFromCsv"                                 -ForegroundColor DarkGray
+    Write-Host "  Marked  : $($toDeleteCS.Count) rule(s) for deletion"      -ForegroundColor Red
     Write-Host ""
-    Write-Host ("  {0,-6} {1,-55} {2,-10} {3}" -f "Row","Name","TagID","SelectorID") -ForegroundColor Cyan
-    Write-Host ("  {0,-6} {1,-55} {2,-10} {3}" -f "---","----","-----","-----------") -ForegroundColor DarkGray
+    Write-Host ("  {0,-6} {1,-55} {2,-10} {3}" -f "Row", "Name", "TagID", "SelectorID") -ForegroundColor Cyan
+    Write-Host ("  {0,-6} {1,-55} {2,-10} {3}" -f "---", "----", "-----", "-----------") -ForegroundColor DarkGray
 
     $rowNum = 1
     foreach ($row in $toDeleteCS) {
         Write-Host ("  {0,-6} {1,-55} {2,-10} {3}" -f $rowNum, $row.Name, $row.TagID, $row.SelectorID) -ForegroundColor Yellow
         $rowNum++
     }
-
-    Write-Host ""
-    Write-Host "  Rules NOT included (safe):" -ForegroundColor Green
-    Write-Host "    - BHE_Audit_1_KEEP  : Custom underscore rules"    -ForegroundColor DarkGray
-    Write-Host "    - BHE_Audit_2_KEEP  : System/Default rules"       -ForegroundColor DarkGray
-    Write-Host "    - BHE_Audit_3_REVIEW: Non-Tier-Zero tag rules"    -ForegroundColor DarkGray
     Write-Host ""
 
     $step1 = Read-Host "  List looks correct? Type CONFIRMED to continue, anything else to exit"
     if ($step1 -ne "CONFIRMED") { Write-Host "  Exited - nothing deleted." -ForegroundColor Yellow; exit }
 
-    # ── STEP 2: Test deletion on first rule ────────────────────────────────
+    # Step 2: Test deletion (first rule only)
     Write-Host ""
     Write-Host "  ========================================================" -ForegroundColor Cyan
     Write-Host "    STEP 2 - TEST DELETION (first rule only)"               -ForegroundColor Cyan
     Write-Host "  ========================================================" -ForegroundColor Cyan
 
     $testRow = $toDeleteCS[0]
-    Write-Host "  Test rule : $($testRow.Name)" -ForegroundColor Yellow
-    Write-Host "  TagID     : $($testRow.TagID)"     -ForegroundColor DarkGray
-    Write-Host "  SelectorID: $($testRow.SelectorID)" -ForegroundColor DarkGray
+    Write-Host "  Test rule  : $($testRow.Name)"       -ForegroundColor Yellow
+    Write-Host "  TagID      : $($testRow.TagID)"      -ForegroundColor DarkGray
+    Write-Host "  SelectorID : $($testRow.SelectorID)" -ForegroundColor DarkGray
     Write-Host ""
 
-    $step2 = Read-Host "  Delete this one rule as a test? Type YES to proceed, anything else to skip test"
+    $step2 = Read-Host "  Delete this one rule as a test? Type YES to proceed, anything else to skip"
     if ($step2 -eq "YES") {
         $testPath   = "/api/v2/asset-group-tags/$($testRow.TagID)/selectors/$($testRow.SelectorID)"
         $testResult = Invoke-BHEDelete -Path $testPath
         if ($testResult) {
             Write-Host ""
-            Write-Host "  [+] TEST PASSED - rule deleted successfully:" -ForegroundColor Green
-            Write-Host "      $($testRow.Name)"                         -ForegroundColor Green
+            Write-Host "  [+] TEST PASSED - rule deleted successfully: $($testRow.Name)" -ForegroundColor Green
             Write-Host ""
             Write-Host "  Verify in BHE UI that the rule is gone, then return here." -ForegroundColor Yellow
             Write-Host ""
             $verified = Read-Host "  Verified in BHE? Type YES to proceed with full deletion, NO to stop here"
             if ($verified -ne "YES") {
-                Write-Host "  Stopped after test. $($toDeleteCS.Count - 1) rules remaining." -ForegroundColor Yellow
+                Write-Host "  Stopped after test. $($toDeleteCS.Count - 1) rule(s) remaining." -ForegroundColor Yellow
                 exit
             }
-            # Remove test row from remaining list
             $toDeleteCS = @($toDeleteCS | Select-Object -Skip 1)
         } else {
             Write-Host ""
@@ -495,7 +527,7 @@ if ($DeleteFromCsv) {
         Write-Host "  Test skipped." -ForegroundColor DarkGray
     }
 
-    # ── STEP 3: Full deletion ──────────────────────────────────────────────
+    # Step 3: Full deletion
     Write-Host ""
     Write-Host "  ========================================================" -ForegroundColor Red
     Write-Host "    STEP 3 - FULL DELETION"                                 -ForegroundColor Red
@@ -544,18 +576,17 @@ if ($DeleteFromCsv) {
     exit
 }
 
-
 # ─────────────────────────────────────────────
 # DISABLE FROM CSV
 # ─────────────────────────────────────────────
 if ($DisableFromCsv) {
-    if (-not (Test-Path $DisableFromCsv)) { Write-Error "CSV file not found: $DisableFromCsv" }
 
-    $csvRows   = Import-Csv -Path $DisableFromCsv
-    $toDisable  = @($csvRows | Where-Object { $_.Confirm -eq "YES" })
+    $csvRows   = Import-ActionCsv -Path $DisableFromCsv
+    $toDisable = @($csvRows | Where-Object { $_.Confirm -eq "YES" })
 
     if ($toDisable.Count -eq 0) {
         Write-Host "  No rows marked Confirm=YES in: $DisableFromCsv" -ForegroundColor Yellow
+        Write-Host "  Open the file, add YES in the Confirm column for rows to action, save and retry." -ForegroundColor DarkGray
         exit
     }
 
@@ -563,7 +594,7 @@ if ($DisableFromCsv) {
     Write-Host "  ======================================" -ForegroundColor Yellow
     Write-Host "    DISABLE CONFIRMATION"                -ForegroundColor Yellow
     Write-Host "  ======================================" -ForegroundColor Yellow
-    Write-Host "  $($toDisable.Count) selector(s) will be DISABLED (not deleted - can be re-enabled):" -ForegroundColor Yellow
+    Write-Host "  $($toDisable.Count) rule(s) will be DISABLED (not deleted - can be re-enabled):" -ForegroundColor Yellow
     Write-Host ""
     foreach ($row in $toDisable) {
         Write-Host ("  {0,-55} Tag: {1}  ID: {2}" -f $row.Name, $row.TagID, $row.SelectorID) -ForegroundColor Yellow
@@ -575,14 +606,15 @@ if ($DisableFromCsv) {
 
     Write-Host ""
     Write-Host "  [*] Disabling..." -ForegroundColor Cyan
+    Write-Host ""
 
     $disabled = 0
     $failed   = 0
     $failLog  = [System.Collections.Generic.List[string]]::new()
 
     foreach ($row in $toDisable) {
-        $path = "/api/v2/asset-group-tags/$($row.TagID)/selectors/$($row.SelectorID)"
-        $body = '{"disabled":true,"id":' + $row.SelectorID + '}'
+        $path   = "/api/v2/asset-group-tags/$($row.TagID)/selectors/$($row.SelectorID)"
+        $body   = '{"disabled":true,"id":' + $row.SelectorID + '}'
         $result = Invoke-BHEPATCH -Path $path -Body $body
         if ($result) {
             Write-Host "  [+] Disabled : $($row.Name)" -ForegroundColor Green
@@ -600,14 +632,16 @@ if ($DisableFromCsv) {
     Write-Host "  ======================================" -ForegroundColor Cyan
     Write-Host "  Disabled : $disabled" -ForegroundColor Green
     Write-Host "  Failed   : $failed"   -ForegroundColor $(if ($failed -gt 0) { "Red" } else { "DarkGray" })
+
     if ($failLog.Count -gt 0) {
         Write-Host ""
         Write-Host "  Failed rules:" -ForegroundColor Red
         foreach ($f in $failLog) { Write-Host "    - $f" -ForegroundColor Red }
     }
+
     Write-Host ""
-    Write-Host "  Note: Run BHE analysis after disabling for objects to lose Tier Zero status." -ForegroundColor Yellow
-    Write-Host "  To re-enable: use -EnableFromCsv with the same CSV file." -ForegroundColor DarkGray
+    Write-Host "  Note: Run BHE analysis after disabling for objects to lose Tier Zero status."  -ForegroundColor Yellow
+    Write-Host "  To re-enable: .\Manage-BHE-Selectors.ps1 -EnableFromCsv '<same csv file>'"    -ForegroundColor DarkGray
     Write-Host ""
     exit
 }
@@ -616,14 +650,13 @@ if ($DisableFromCsv) {
 # ENABLE FROM CSV
 # ─────────────────────────────────────────────
 if ($EnableFromCsv) {
-    if (-not (Test-Path $EnableFromCsv)) { Write-Error "CSV file not found: $EnableFromCsv" }
 
-    $csvRows  = Import-Csv -Path $EnableFromCsv
-    $toEnable   = @($csvRows | Where-Object { $_.Confirm -eq "YES" })
+    $csvRows  = Import-ActionCsv -Path $EnableFromCsv
+    $toEnable = @($csvRows | Where-Object { $_.Confirm -eq "YES" })
 
     if ($toEnable.Count -eq 0) {
         Write-Host "  No rows marked Confirm=YES in: $EnableFromCsv" -ForegroundColor Yellow
-        Write-Host "  Mark YES on the rows you want re-enabled." -ForegroundColor DarkGray
+        Write-Host "  Open the file, mark YES on the rows you want re-enabled, save and retry." -ForegroundColor DarkGray
         exit
     }
 
@@ -631,7 +664,7 @@ if ($EnableFromCsv) {
     Write-Host "  ======================================" -ForegroundColor Cyan
     Write-Host "    ENABLE CONFIRMATION"                 -ForegroundColor Cyan
     Write-Host "  ======================================" -ForegroundColor Cyan
-    Write-Host "  $($toEnable.Count) selector(s) will be RE-ENABLED:" -ForegroundColor Cyan
+    Write-Host "  $($toEnable.Count) rule(s) will be RE-ENABLED:" -ForegroundColor Cyan
     Write-Host ""
     foreach ($row in $toEnable) {
         Write-Host ("  {0,-55} Tag: {1}  ID: {2}" -f $row.Name, $row.TagID, $row.SelectorID) -ForegroundColor White
@@ -643,6 +676,7 @@ if ($EnableFromCsv) {
 
     Write-Host ""
     Write-Host "  [*] Enabling..." -ForegroundColor Cyan
+    Write-Host ""
 
     $enabled = 0
     $failed  = 0
@@ -666,21 +700,26 @@ if ($EnableFromCsv) {
     Write-Host "  ======================================" -ForegroundColor Cyan
     Write-Host "    Enable Complete"                     -ForegroundColor Cyan
     Write-Host "  ======================================" -ForegroundColor Cyan
-    Write-Host "  Enabled  : $enabled" -ForegroundColor Green
-    Write-Host "  Failed   : $failed"  -ForegroundColor $(if ($failed -gt 0) { "Red" } else { "DarkGray" })
+    Write-Host "  Enabled : $enabled" -ForegroundColor Green
+    Write-Host "  Failed  : $failed"  -ForegroundColor $(if ($failed -gt 0) { "Red" } else { "DarkGray" })
+
     if ($failLog.Count -gt 0) {
         Write-Host ""
         Write-Host "  Failed rules:" -ForegroundColor Red
         foreach ($f in $failLog) { Write-Host "    - $f" -ForegroundColor Red }
     }
+
     Write-Host ""
     Write-Host "  Note: Run BHE analysis after enabling for objects to regain Tier Zero status." -ForegroundColor Yellow
     Write-Host ""
     exit
 }
 
-# Selection loop
 # ─────────────────────────────────────────────
+# INTERACTIVE MODE
+# ─────────────────────────────────────────────
+Show-AllSelectors -selectors $allSelectors
+
 Write-Host "  ======================================" -ForegroundColor Cyan
 Write-Host "    SELECT RULES TO DELETE"               -ForegroundColor Cyan
 Write-Host "  ======================================" -ForegroundColor Cyan
@@ -725,9 +764,9 @@ $toDelete = [System.Collections.Generic.List[PSCustomObject]]::new()
                         Write-Host "    [+] Queued: [$($m.Index)] $($m.Name)" -ForegroundColor Red
                     }
                 }
-                Write-Host "    $(@($matched).Count) selector(s) matched pattern '$pat'" -ForegroundColor DarkGray
+                Write-Host "    $(@($matched).Count) rule(s) matched pattern '$pat'" -ForegroundColor DarkGray
             } else {
-                Write-Host "    No custom selectors matched '$pat'" -ForegroundColor Yellow
+                Write-Host "    No custom rules matched '$pat'" -ForegroundColor Yellow
             }
         }
 
@@ -741,22 +780,26 @@ $toDelete = [System.Collections.Generic.List[PSCustomObject]]::new()
                         Write-Host "    [+] Queued: [$($m.Index)] $($m.Name)" -ForegroundColor Red
                     }
                 }
-                Write-Host "    $(@($matched).Count) custom selector(s) added from tag '$tagPat'" -ForegroundColor DarkGray
+                Write-Host "    $(@($matched).Count) custom rule(s) added from tag '$tagPat'" -ForegroundColor DarkGray
             } else {
-                Write-Host "    No custom selectors found in tag '$tagPat'" -ForegroundColor Yellow
+                Write-Host "    No custom rules found in tag '$tagPat'" -ForegroundColor Yellow
             }
         }
 
         '^(\d+)-(\d+)$' {
             $from  = [int]$Matches[1]
             $to    = [int]$Matches[2]
-            $items = @($allSelectors | Where-Object { $_.Index -ge $from -and $_.Index -le $to })
-            foreach ($item in $items) {
-                if ($item.IsDefault) {
-                    Write-Host "    [SKIP] [$($item.Index)] $($item.Name) - default/system selector" -ForegroundColor DarkGray
-                } elseif (-not ($toDelete | Where-Object { $_.SelectorID -eq $item.SelectorID })) {
-                    $toDelete.Add($item)
-                    Write-Host "    [+] Queued: [$($item.Index)] $($item.Name)" -ForegroundColor Red
+            if ($from -gt $to) {
+                Write-Host "    [!] Invalid range - start index must be less than or equal to end." -ForegroundColor Yellow
+            } else {
+                $items = @($allSelectors | Where-Object { $_.Index -ge $from -and $_.Index -le $to })
+                foreach ($item in $items) {
+                    if ($item.IsDefault) {
+                        Write-Host "    [SKIP] [$($item.Index)] $($item.Name) - default/system rule" -ForegroundColor DarkGray
+                    } elseif (-not ($toDelete | Where-Object { $_.SelectorID -eq $item.SelectorID })) {
+                        $toDelete.Add($item)
+                        Write-Host "    [+] Queued: [$($item.Index)] $($item.Name)" -ForegroundColor Red
+                    }
                 }
             }
         }
@@ -766,9 +809,9 @@ $toDelete = [System.Collections.Generic.List[PSCustomObject]]::new()
             foreach ($n in $nums) {
                 $item = $allSelectors | Where-Object { $_.Index -eq [int]$n }
                 if (-not $item) {
-                    Write-Host "    [!] No selector with index $n" -ForegroundColor Yellow
+                    Write-Host "    [!] No rule with index $n" -ForegroundColor Yellow
                 } elseif ($item.IsDefault) {
-                    Write-Host "    [SKIP] [$($item.Index)] $($item.Name) - default/system selector" -ForegroundColor DarkGray
+                    Write-Host "    [SKIP] [$($item.Index)] $($item.Name) - default/system rule" -ForegroundColor DarkGray
                 } elseif (-not ($toDelete | Where-Object { $_.SelectorID -eq $item.SelectorID })) {
                     $toDelete.Add($item)
                     Write-Host "    [+] Queued: [$($item.Index)] $($item.Name)" -ForegroundColor Red
@@ -777,7 +820,7 @@ $toDelete = [System.Collections.Generic.List[PSCustomObject]]::new()
         }
 
         default {
-            Write-Host "    [?] Unrecognised. Type 'list' to redisplay or 'quit' to exit." -ForegroundColor Yellow
+            Write-Host "    [?] Unrecognised input. Type 'list' to redisplay or 'quit' to exit." -ForegroundColor Yellow
         }
     }
 
@@ -785,7 +828,7 @@ $toDelete = [System.Collections.Generic.List[PSCustomObject]]::new()
 }
 
 # ─────────────────────────────────────────────
-# Confirmation
+# Interactive — confirmation and delete
 # ─────────────────────────────────────────────
 if (@($toDelete).Count -eq 0) {
     Write-Host "  Nothing selected. Exiting." -ForegroundColor Yellow
@@ -796,7 +839,7 @@ Write-Host ""
 Write-Host "  ======================================" -ForegroundColor Red
 Write-Host "    DELETION CONFIRMATION"               -ForegroundColor Red
 Write-Host "  ======================================" -ForegroundColor Red
-Write-Host "  The following $(@($toDelete).Count) selector(s) will be PERMANENTLY DELETED:" -ForegroundColor Red
+Write-Host "  The following $(@($toDelete).Count) rule(s) will be PERMANENTLY DELETED:" -ForegroundColor Red
 Write-Host ""
 foreach ($sel in $toDelete | Sort-Object TagName, Name) {
     Write-Host ("  [{0:D3}] {1}" -f $sel.Index, $sel.Name) -ForegroundColor Yellow
@@ -810,11 +853,9 @@ if ($confirm -ne "YES") {
     exit
 }
 
-# ─────────────────────────────────────────────
-# Delete
-# ─────────────────────────────────────────────
 Write-Host ""
 Write-Host "  [*] Deleting..." -ForegroundColor Cyan
+Write-Host ""
 
 $deleted = 0
 $failed  = 0
