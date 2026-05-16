@@ -110,12 +110,31 @@ The delete mode has three confirmation checkpoints:
 
 1. **Review** — displays all `Confirm=YES` rows, type `CONFIRMED` to continue
 
-![Uploading 4 - CSV4 - Important YES Column.jpg…]()
+<img width="1685" height="497" alt="5 - Delete List" src="https://github.com/user-attachments/assets/70691181-be13-4f31-aed3-f4615a4db0c2" />
 
 2. **Test** — deletes a single rule, prompts you to verify it's gone in the BHE UI before proceeding
+
+<img width="596" height="208" alt="6 - Test Single Rule" src="https://github.com/user-attachments/assets/6e7f7db3-3d24-4c95-82b3-71b85fd0b6b9" />
+
+Check BHE (Run Analysis / Check Rule was deleted and any Objects are no longer tagged as Tier Zero !)
+
+<img width="565" height="762" alt="7 - Single Test Rule Deleted BHE UI" src="https://github.com/user-attachments/assets/326d23f6-0b57-4540-ab68-a5b9382c03a4" />
+
 3. **Full run** — type `YES` to process all remaining rows
 
+<img width="518" height="417" alt="7 - Delete Remaining Rules" src="https://github.com/user-attachments/assets/04880808-41ca-4e6e-92ca-bf7d68c4d948" />
+
 Failures are reported at the end — a single failure does not abort the batch.
+
+4. BHE will require analysis to be run.
+
+5. Review Rules in BHE to confirm they have all been deleted / disabled or Enabled (Depending on your use case / Method actioned)
+
+<img width="688" height="512" alt="9 - ALL Rules Deleted" src="https://github.com/user-attachments/assets/96cdb3d5-e772-45d0-8b1b-8f9c988d888a" />
+
+
+
+
 
 ---
 
