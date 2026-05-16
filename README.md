@@ -56,7 +56,7 @@ Pass a custom path with `-EnvFile "C:\creds\bhe.env"` if needed.
 
 ```
 <img width="964" height="694" alt="1 - Audit Results" src="https://github.com/user-attachments/assets/fc91d21b-8d64-489b-b99b-a385b8f41b99" />
-<img width="960" height="205" alt="3 - CSV Files Details" src="https://github.com/user-attachments/assets/db567648-e0f4-403f-8888-8a2294dd5667" />
+
 
 Generates five CSV files in the script directory:
 
