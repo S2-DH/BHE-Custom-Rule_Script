@@ -57,6 +57,7 @@ Pass a custom path with `-EnvFile "C:\creds\bhe.env"` if needed.
 ```
 <img width="964" height="694" alt="1 - Audit Results" src="https://github.com/user-attachments/assets/fc91d21b-8d64-489b-b99b-a385b8f41b99" />
 
+
 Generates five CSV files in the script directory:
 
 | File | Contents | Action |
@@ -69,12 +70,13 @@ Generates five CSV files in the script directory:
 
 <img width="820" height="366" alt="2 - Folder csv View" src="https://github.com/user-attachments/assets/ffde768a-278e-48bc-a7aa-8ab00aac36d0" />
 
+<img width="960" height="205" alt="3 - CSV Files Details" src="https://github.com/user-attachments/assets/db567648-e0f4-403f-8888-8a2294dd5667" />
+
 
 ### 2. Review CSV 4
 
 Open `BHE_Audit_4_ACTION_REQUIRED_*.csv` in Excel.
 
-<img width="960" height="205" alt="3 - CSV Files Details" src="https://github.com/user-attachments/assets/db567648-e0f4-403f-8888-8a2294dd5667" />
 <img width="1685" height="402" alt="4 - CSV4 - Important YES Column" src="https://github.com/user-attachments/assets/33b555e4-6ad5-486f-890c-28e9ce410742" />
 
 
