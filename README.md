@@ -1,203 +1,171 @@
-[README.md](https://github.com/user-attachments/files/27763182/README.md)
-# BHE Selector / Rule Manager
-### `Manage-BHE-Selectors.ps1`
+[BHE-Rule-Cleanup-README.md](https://github.com/user-attachments/files/27851507/BHE-Rule-Cleanup-README.md)
+# Manage-BHE-Selectors.ps1
 
-A PowerShell script to audit, disable, enable and delete BHE Asset Group Tag Selectors (rules) via the BHE API.
-
----
-
-## Pre-requisites
-
-- PowerShell 5.1+
-- BHE API token (Administrator role)
-- A `.env` file in the same folder as the script:
-
-```
-BHE_API_ID=<your-token-id>
-BHE_API_KEY=<your-token-key>
-BHE_URL=http://<your-bhe-instance>:8080
-```
-
-> Generate a token in BHE: **Settings > Manage API Tokens**
+**BHE Asset Group Tag Rule Manager — Bulk Cleanup Tool**  
+TAM Team | May 2026
 
 ---
 
-## Parameters
+## What it does
 
-| Parameter | Description |
+Connects to a BloodHound Enterprise tenant via the API and manages Asset Group Tag Rules (previously called Selectors). Designed for large-scale cleanup operations — typically removing hundreds of legacy rules — through a safe, audit-first, CSV-driven workflow.
+
+The delete operation is permanent and irreversible, so the script is structured to make it impossible to accidentally skip the review and confirmation steps.
+
+---
+
+## Prerequisites
+
+- PowerShell 5.1 or later
+- A `.env` file in the same folder as the script (see below)
+- API token with Asset Isolation **write** access in BHE
+
+### `.env` format
+
+```
+BHE_API_ID="your-token-id-here"
+BHE_API_KEY="your-token-key-here"
+BHE_URL="https://your-tenant.bloodhoundenterprise.io"
+```
+
+Pass a custom path with `-EnvFile "C:\creds\bhe.env"` if needed.
+
+---
+
+## Modes
+
+| Parameter | What it does |
 |---|---|
-| `-Audit` | Read-only mode — exports 5 CSV files, no changes made |
-| `-Audit -NoFilter` | Same as `-Audit` but all custom rules go into CSV 4 regardless of name |
-| `-DeleteFromCsv "path"` | Deletes rows marked `YES` in the `Confirm` column of the specified CSV |
-| `-DisableFromCsv "path"` | Disables rows marked `YES` in the `Confirm` column of the specified CSV |
-| `-EnableFromCsv "path"` | Re-enables rows marked `YES` in the `Confirm` column of the specified CSV |
-| `-EnvFile "path"` | Override the default `.env` file location |
-| `-BHEUrl` | Override BHE URL (instead of `.env`) |
-| `-TokenID` | Override API Token ID (instead of `.env`) |
-| `-TokenKey` | Override API Token Key (instead of `.env`) |
+| `-Audit` | Fetches all rules, exports five categorised CSVs, no changes made |
+| `-Audit -NoFilter` | Same but includes all custom rules in CSV 4 regardless of naming |
+| `-DisableFromCsv "<path>"` | Disables rules marked `Confirm=YES` in the CSV — reversible |
+| `-EnableFromCsv "<path>"` | Re-enables rules marked `Confirm=YES` — run BHE analysis after |
+| `-DeleteFromCsv "<path>"` | Permanently deletes rules marked `Confirm=YES` |
+| *(no params)* | Interactive mode — displays all rules, select and delete ad-hoc |
 
 ---
 
-## Step 1 — Audit
+## Recommended workflow
 
-Run the script in audit mode. This is **read-only** — no changes are made.
+### 1. Run the audit
 
 ```powershell
 .\Manage-BHE-Selectors.ps1 -Audit
+
+
+
 ```
-> **Script output from the Audit process
-<img width="1454" height="852" alt="image" src="https://github.com/user-attachments/assets/afd559a6-5607-4659-a93a-ac94b7871a8e" />
+<img width="964" height="694" alt="1 - Audit Results" src="https://github.com/user-attachments/assets/fc91d21b-8d64-489b-b99b-a385b8f41b99" />
 
-The script connects to BHE, pulls all selectors across all asset group tags, and exports 5 CSV files to the script folder.
-
-> **Script folder showing the 5 CSV files**
-
-<img width="741" height="345" alt="image" src="https://github.com/user-attachments/assets/24f1cf06-573d-47ac-b962-52a746dc7897" />
-
-
-> **Script output showing CSV file contents summary**
-
-<img width="688" height="147" alt="image" src="https://github.com/user-attachments/assets/8069ac09-54c3-4d36-8d8c-3aea27e79914" />
-
-
----
-
-## The 5 CSV Files
+Generates five CSV files in the script directory:
 
 | File | Contents | Action |
 |---|---|---|
-| `BHE_Audit_1a_KEEP_Custom_Underscore` | Custom rules with `_` prefix | Keep |
-| `BHE_Audit_1b_KEEP_Connector_Rules` | Connector rules (Jamf / Okta / GitHub / Entra) | Keep |
-| `BHE_Audit_2_KEEP_System_Default` | BHE default rules (`IsDefault = TRUE`) | Keep — never delete |
-| `BHE_Audit_3_REVIEW_NonTierZero_Tags` | Rules in non-Tier-Zero tags (Owned, Tier 1 etc.) | Review separately |
-| `BHE_Audit_4_DELETE_Candidates` | Tier Zero custom rules — no `_` prefix, not a connector | **Review and action** |
+| `BHE_Audit_1a_KEEP_Custom_Underscore` | Rules with `_` prefix (Tier Zero) | Leave alone |
+| `BHE_Audit_1b_KEEP_Connector_Rules` | Jamf / Okta / GitHub / Entra rules | Leave alone |
+| `BHE_Audit_2_KEEP_System_Default` | Built-in BloodHound system rules | Leave alone |
+| `BHE_Audit_3_REVIEW_NonTierZero_Tags` | Rules on non-Tier-Zero tags | Review separately |
+| `BHE_Audit_4_ACTION_REQUIRED` | Tier Zero custom rules — candidates for action | **Work from this one** |
 
-> **All rules listed in the audit output**
-
-
-
----
-
-## Step 2 — Review CSV 4
-
-Open `BHE_Audit_4_DELETE_Candidates_<timestamp>.csv` in Excel.
-
-- The `Confirm` column is **blank by default**
-- Add `YES` in the `Confirm` column on every row you want actioned
-- Leave the `Confirm` column blank to skip that rule
-- If a rule in CSV 4 should be kept — either remove the row or leave `Confirm` blank
-- Save the file as CSV when done
-
-> **CSV 4 with Confirm column marked YES**
-
-<img width="1338" height="338" alt="image" src="https://github.com/user-attachments/assets/007e0ff6-4c07-46e8-af73-754bf0a4d40a" />
+<img width="820" height="366" alt="2 - Folder csv View" src="https://github.com/user-attachments/assets/ffde768a-278e-48bc-a7aa-8ab00aac36d0" />
 
 
----
+### 2. Review CSV 4
 
-## Step 3 — Delete Rules
+Open `BHE_Audit_4_ACTION_REQUIRED_*.csv` in Excel.
 
-Point the script at your completed CSV 4:
+<img width="960" height="205" alt="3 - CSV Files Details" src="https://github.com/user-attachments/assets/db567648-e0f4-403f-8888-8a2294dd5667" />
+<img width="1685" height="402" alt="4 - CSV4 - Important YES Column" src="https://github.com/user-attachments/assets/33b555e4-6ad5-486f-890c-28e9ce410742" />
+
+
+- Review each row — the `Seeds` column shows what each rule targets (Object ID or Cypher query)
+- Type `YES` in the **Confirm** column for any rule you want to action
+- Leave blank to skip
+- Save the file
+
+> The same `Confirm=YES` column drives all three operations (disable, enable, delete).
+> The action depends on which parameter you use in the command — not on separate columns.
+
+### 3. Disable first (recommended)
 
 ```powershell
-.\Manage-BHE-Selectors.ps1 -DeleteFromCsv ".\BHE_Audit_4_DELETE_Candidates_<timestamp>.csv"
+.\Manage-BHE-Selectors.ps1 -DisableFromCsv ".\BHE_Audit_4_ACTION_REQUIRED_20260516_070537.csv"
 ```
 
-The deletion runs in **3 steps**:
+Disabling is reversible. Objects lose Tier Zero status after the next BHE analysis, letting you verify impact before committing to deletion. To undo:
 
-**Step 1 — Review the deletion list**
+```powershell
+.\Manage-BHE-Selectors.ps1 -EnableFromCsv ".\BHE_Audit_4_ACTION_REQUIRED_20260516_070537.csv"
+```
 
-The script displays every rule marked `YES` with its Tag ID and Selector ID.
-Type `CONFIRMED` to proceed.
+### 4. Delete
 
-> **Deletion Candidate List**
+```powershell
+.\Manage-BHE-Selectors.ps1 -DeleteFromCsv ".\BHE_Audit_4_ACTION_REQUIRED_20260516_070537.csv"
+```
 
-<img width="528" height="376" alt="image" src="https://github.com/user-attachments/assets/38dfb380-f474-4857-82ee-1ece1ffcdff3" />
+The delete mode has three confirmation checkpoints:
 
-**Step 2 — Single rule test**
+1. **Review** — displays all `Confirm=YES` rows, type `CONFIRMED` to continue
 
-The script deletes the **first rule only** as a test. Verify in the BHE UI that the rule is gone, then type `YES` to proceed to the full run.
+![Uploading 4 - CSV4 - Important YES Column.jpg…]()
 
-> **Single rule test deletion**
+2. **Test** — deletes a single rule, prompts you to verify it's gone in the BHE UI before proceeding
+3. **Full run** — type `YES` to process all remaining rows
 
-<img width="563" height="744" alt="image" src="https://github.com/user-attachments/assets/8f369060-c148-402b-8f6a-f4203392cc1e" />
-
-
-**Step 3 — Full deletion**
-
-The script deletes all remaining rules, reporting `[+] Deleted` or `[!] Failed` per rule, with a summary at the end.
-
-<img width="584" height="807" alt="image" src="https://github.com/user-attachments/assets/c30e1d80-aa68-473c-9bc0-eefec82ab39c" />
+Failures are reported at the end — a single failure does not abort the batch.
 
 ---
 
-## After Deletion — Run Analysis
+## Authentication
 
-Objects in deleted or disabled rules retain their Tier Zero tag until BHE analysis recalculates membership.
+Uses the standard BHE three-step chained HMAC-SHA256 signing pattern. The same auth logic is used across all BHE API tooling in this repo (`bhe-api.sh`, `BHE-API-Console.ps1`).
 
-**Via BHE UI:** Settings → Analysis → Run Analysis
-
-**Check analysis has completed:**
-
-Wait until `status = idle` and `last_complete_analysis_at` shows a timestamp after your deletion.
-
+Each request signs `METHOD + ENDPOINT`, then the DateKey, then the request body — matching the BHE API signature spec exactly.
 
 ---
 
-## Disable / Enable Rules (Alternative to Deletion)
+## CSV 4 filtering logic
 
-Disabling is reversible — rules can be re-enabled without a restore.
+By default, rules land in `BHE_Audit_4_ACTION_REQUIRED` if they are:
+- On Tag ID 1 (Tier Zero)
+- Not a default/system rule (`IsDefault = false`)
+- Name does not start with `_`
+- Name does not start with `Jamf:`, `Okta:`, `GitHub:`, `Entra `
+- Name is not `OKTAT1` or match `ADMIN@...`
 
-**Disable rules** (same CSV workflow as deletion):
-```powershell
-.\Manage-BHE-Selectors.ps1 -DisableFromCsv ".\BHE_Audit_4_DELETE_Candidates_<timestamp>.csv"
-```
-
-**Re-enable rules:**
-```powershell
-.\Manage-BHE-Selectors.ps1 -EnableFromCsv ".\BHE_Audit_4_DELETE_Candidates_<timestamp>.csv"
-```
-
-Both use the same CSV file with `YES` in the `Confirm` column. Run analysis after either action for changes to take effect.
+Use `-NoFilter` to bypass this and include everything for manual review.
 
 ---
 
-## Generic Use — No Naming Pattern
+## Error reference
 
-If there is no distinguishing naming pattern to filter on, run the audit with `-NoFilter`:
-
-```powershell
-.\Manage-BHE-Selectors.ps1 -Audit -NoFilter
-```
-
-This puts **all** custom non-default rules into CSV 4 for manual review. Open in Excel, mark `YES` in the `Confirm` column on the rules to delete, and run the deletion script as normal.
+| HTTP Code | Meaning | Action |
+|---|---|---|
+| 403 | Token lacks write permissions | Check API token role in BHE admin |
+| 404 | Rule already deleted | Safe to ignore |
+| 429 | Rate limiting | Re-run — already-processed rules won't reappear |
+| Connection error | Network / VPN issue | Check connectivity to BHE tenant |
 
 ---
 
-## Interactive Mode
+## Files in this folder
 
-Running the script without parameters launches an interactive selector browser — displays all rules colour-coded and lets you select rules to delete by number, range or name pattern:
-
-```powershell
-.\Manage-BHE-Selectors.ps1
+```
+Manage-BHE-Selectors.ps1          Main script
+.env                               Credentials (not committed to source control)
+BHE_Audit_1a_KEEP_*               Generated by -Audit
+BHE_Audit_1b_KEEP_*               Generated by -Audit
+BHE_Audit_2_KEEP_*                Generated by -Audit
+BHE_Audit_3_REVIEW_*              Generated by -Audit
+BHE_Audit_4_ACTION_REQUIRED_*     Generated by -Audit — working file for actions
 ```
 
-| Colour | Meaning |
-|---|---|
-| 🔴 Red | Matches `SDH-2B-DELETED` pattern |
-| 🟢 Green | Matches `_SDH-KEEP` pattern |
-| ⚫ Gray | Default / system rule (protected) |
-| ⚪ White | Other custom rule |
+---
 
-Selection options at the prompt:
+## Notes
 
-| Input | Action |
-|---|---|
-| `5` | Select single rule by index |
-| `1,3,7` | Select multiple by index |
-| `1-15` | Select a range |
-| `pattern:TEXT` | Select all matching a name pattern |
-| `tag:Tier Zero` | Select all custom rules in a tag |
-| `list` | Redisplay all rules |
-| `done` | Proceed to deletion |
-| `quit` | Exit without deleting |
+- Never commit `.env` or CSV files containing rule data to source control
+- CSV 3 (Non-Tier-Zero tags) should always be reviewed separately — do not action it without understanding what's in it
+- When running against a customer environment, use a separate `.env` file and always run `-Audit` first — naming conventions will differ from the lab
+- The `_` prefix and connector prefix filtering is tuned for the SDH lab environment
