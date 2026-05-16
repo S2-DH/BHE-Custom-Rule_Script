@@ -58,6 +58,7 @@ Pass a custom path with `-EnvFile "C:\creds\bhe.env"` if needed.
 <img width="964" height="694" alt="1 - Audit Results" src="https://github.com/user-attachments/assets/fc91d21b-8d64-489b-b99b-a385b8f41b99" />
 
 
+
 When the Audit has completed this will generate five CSV files in the script directory:
 
 | File | Contents | Action |
