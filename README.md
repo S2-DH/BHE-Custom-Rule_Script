@@ -114,23 +114,24 @@ The delete mode has three confirmation checkpoints:
 
 2. **Test** — deletes a single rule, prompts you to verify it's gone in the BHE UI before proceeding
 
-<img width="596" height="208" alt="6 - Test Single Rule" src="https://github.com/user-attachments/assets/6e7f7db3-3d24-4c95-82b3-71b85fd0b6b9" />
+<img width="596" height="208" alt="6 - Test Single Rule" src="https://github.com/user-attachments/assets/879db1be-c86e-486b-bc7c-34df55bd8334" />
 
-Check BHE (Run Analysis / Check Rule was deleted and any Objects are no longer tagged as Tier Zero !)
+**IMPORTANT: **Check BHE (Run Analysis / Check Rule was deleted and any Objects are no longer tagged as Tier Zero !)
 
-<img width="565" height="762" alt="7 - Single Test Rule Deleted BHE UI" src="https://github.com/user-attachments/assets/326d23f6-0b57-4540-ab68-a5b9382c03a4" />
+<img width="559" height="579" alt="7 - Single Test Rule Deleted BHE UI" src="https://github.com/user-attachments/assets/8f57d908-0f6f-447a-9631-924b1150773b" />
 
 3. **Full run** — type `YES` to process all remaining rows
 
-<img width="518" height="417" alt="7 - Delete Remaining Rules" src="https://github.com/user-attachments/assets/04880808-41ca-4e6e-92ca-bf7d68c4d948" />
+<img width="518" height="417" alt="8 - Delete Remaining Rules" src="https://github.com/user-attachments/assets/2e178c29-799d-42b7-84f7-b1e517a36afe" />
 
-Failures are reported at the end — a single failure does not abort the batch.
+**NOTE: **Failures are reported at the end — a single failure does not abort the batch.
 
 4. BHE will require analysis to be run.
 
 5. Review Rules in BHE to confirm they have all been deleted / disabled or Enabled (Depending on your use case / Method actioned)
 
-<img width="688" height="512" alt="9 - ALL Rules Deleted" src="https://github.com/user-attachments/assets/96cdb3d5-e772-45d0-8b1b-8f9c988d888a" />
+<img width="688" height="512" alt="9 - ALL Rules Deleted" src="https://github.com/user-attachments/assets/24c26a5a-3204-4d1c-afd8-00e5192b2bde" />
+
 
 
 
